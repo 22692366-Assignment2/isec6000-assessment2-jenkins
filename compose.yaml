@@ -1,0 +1,89 @@
+# Docker Compose configuration for the containerised Jenkins CI environment.
+name: isec6000-jenkins
+
+services:
+  # A dedicated Docker daemon used by Jenkins to build and run containers.
+  docker:
+    image: docker:27-dind
+    container_name: jenkins-docker
+
+    # Docker-in-Docker requires privileged mode to create its internal daemon.
+    # Privileged access is limited to this isolated supporting container.
+    privileged: true
+
+    # Enable TLS so Jenkins does not communicate with Docker over an
+    # unauthenticated plaintext socket.
+    environment:
+      DOCKER_TLS_CERTDIR: /certs
+
+    # Store client certificates and share Jenkins workspace data with the
+    # containers created by the DinD daemon.
+    volumes:
+      - jenkins-docker-certs:/certs/client
+      - jenkins-data:/var/jenkins_home
+
+    # Use the overlay2 storage driver for efficient layered image storage.
+    command:
+      - --storage-driver=overlay2
+
+    networks:
+      - jenkins-network
+
+    restart: unless-stopped
+
+    # Confirm that the internal Docker daemon is ready before Jenkins starts.
+    healthcheck:
+      test: ["CMD", "docker", "info"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # Jenkins controller built from the local security-conscious Dockerfile.
+  jenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: isec6000-jenkins:lts
+    container_name: jenkins-controller
+
+    # Run the service using the standard non-root Jenkins account.
+    user: "1000:1000"
+
+    # Configure the Docker client to use the DinD daemon through TLS.
+    environment:
+      DOCKER_HOST: tcp://docker:2376
+      DOCKER_CERT_PATH: /certs/client
+      DOCKER_TLS_VERIFY: "1"
+
+    # Bind Jenkins only to the local machine to avoid unnecessary exposure.
+    ports:
+      - "127.0.0.1:8080:8080"
+
+    # Persist Jenkins configuration and provide access to Docker TLS certificates.
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      - jenkins-docker-certs:/certs/client:ro
+
+    networks:
+      - jenkins-network
+
+    depends_on:
+      docker:
+        condition: service_healthy
+
+    # Prevent processes inside Jenkins from gaining additional privileges.
+    security_opt:
+      - no-new-privileges:true
+
+    restart: unless-stopped
+
+# The private bridge network allows Jenkins to reach DinD by service name.
+networks:
+  jenkins-network:
+    driver: bridge
+
+# Named volumes preserve Jenkins data and generated TLS client certificates.
+volumes:
+  jenkins-data:
+  jenkins-docker-certs:
