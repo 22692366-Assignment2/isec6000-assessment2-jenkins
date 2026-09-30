@@ -21,6 +21,7 @@ services:
     volumes:
       - jenkins-docker-certs:/certs/client
       - jenkins-data:/var/jenkins_home
+      - jenkins-docker-data:/var/lib/docker
 
     # Use the overlay2 storage driver for efficient layered image storage.
     command:
@@ -87,3 +88,4 @@ networks:
 volumes:
   jenkins-data:
   jenkins-docker-certs:
+  jenkins-docker-data:
