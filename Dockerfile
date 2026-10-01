@@ -1,4 +1,4 @@
-# Use the official Jenkins LTS image with Java 17.
+# Use the official Jenkins LTS image with Java 21.
 FROM jenkins/jenkins:lts-jdk21
 
 # Temporarily become root only while installing the Docker command-line tools.
